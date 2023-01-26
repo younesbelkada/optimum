@@ -70,10 +70,10 @@ def replace_to_bettertransformer(model, config):
             ):
                 replace_to_bettertransformer(module, config)
 
-        if hasattr(module, "is_decoder"):
-            # Decoders are not supported yet on Better Transformers
-            if module.is_decoder:
-                continue
+        # if hasattr(module, "is_decoder"):
+        #     # Decoders are not supported yet on Better Transformers
+        #     if module.is_decoder:
+        #         continue
 
         if hasattr(module, "SCB"):
             # 8-bit modules are not supported
@@ -252,7 +252,7 @@ class BetterTransformer(object):
             model_fast = replace_to_bettertransformer(model, hf_config).eval()
             model = None
 
-        set_last_layer(model_fast)
+        # set_last_layer(model_fast)
 
         # Step 6: Add a class arguments, we might need to identify whether the model
         # has been correctly converted to its `BetterTransformer` version.

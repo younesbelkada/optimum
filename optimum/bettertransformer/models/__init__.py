@@ -13,6 +13,7 @@
 # limitations under the License.
 import warnings
 
+from .decoder_models import OPTAttentionLayerBetterTransformer
 from .encoder_models import (
     AlbertLayerBetterTransformer,
     BartEncoderLayerBetterTransformer,
@@ -47,6 +48,7 @@ class BetterTransformerManager:
         "m2m_100": ("M2M100EncoderLayer", MBartEncoderLayerBetterTransformer),
         "markuplm": ("MarkupLMLayer", BertLayerBetterTransformer),
         "mbart": ("MBartEncoderLayer", MBartEncoderLayerBetterTransformer),
+        "opt": ("OPTAttention", OPTAttentionLayerBetterTransformer),
         "rembert": ("RemBertLayer", BertLayerBetterTransformer),
         "roberta": ("RobertaLayer", BertLayerBetterTransformer),
         "roc_bert": ("RoCBertLayer", BertLayerBetterTransformer),
