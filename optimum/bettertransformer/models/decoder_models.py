@@ -78,18 +78,18 @@ class OPTAttentionLayerBetterTransformer(BetterTransformerBaseLayer):
         self.in_proj_weight = nn.Parameter(
             torch.cat(
                 [
+                    opt_layer.q_proj.weight,
                     opt_layer.k_proj.weight,
                     opt_layer.v_proj.weight,
-                    opt_layer.q_proj.weight,
                 ]
             )
         )
         self.in_proj_bias = nn.Parameter(
             torch.cat(
                 [
+                    opt_layer.q_proj.bias,
                     opt_layer.k_proj.bias,
-                    opt_layer.k_proj.bias,
-                    opt_layer.k_proj.bias,
+                    opt_layer.v_proj.bias,
                 ]
             )
         )
