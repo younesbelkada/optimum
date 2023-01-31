@@ -95,6 +95,12 @@ class OPTAttentionLayerBetterTransformer(BetterTransformerBaseLayer):
         )
         self.out_proj = opt_layer.out_proj
 
+        self.multihead_attn = torch.nn.MultiheadAttention(self.embed_dim, self.num_heads, dtype=self.q_proj.weight.dtype, add_bias_kv=True, batch_first=True)
+        self.multihead_attn.out_proj = self.out_proj
+        self.multihead_attn.in_proj_weight = self.in_proj_weight
+        self.multihead_attn.in_proj_bias = self.in_proj_bias
+
+
     def merge_masks(self, attn_mask, key_padding_mask, query):
         r"""
         Determine mask type and combine masks if necessary. If only one mask is provided, that mask
@@ -137,28 +143,11 @@ class OPTAttentionLayerBetterTransformer(BetterTransformerBaseLayer):
         return merged_mask, mask_type
 
     def forward(self, hidden_states, attention_mask, **__):
-        query, key, value = self.q_proj(hidden_states), self.k_proj(hidden_states), self.v_proj(hidden_states)
-
         # convert `attention_mask` which is a causal mask to a simple mask
         causal_mask = attention_mask.clone()
         if len(attention_mask.shape) == 4:
             attention_mask = attention_mask.squeeze(1)[:, 0]
 
-        merged_mask, mask_type = self.merge_masks(causal_mask, attention_mask.bool(), query)
-
-        hidden_states = torch._native_multi_head_attention(
-            query,
-            key,
-            value,
-            self.embed_dim,
-            self.num_heads,
-            self.in_proj_weight,
-            self.in_proj_bias,
-            self.out_proj.weight,
-            self.out_proj.bias,
-            merged_mask,
-            False,
-            False,
-            mask_type,
-        )
+        hidden_states, attn_output_weights = self.multihead_attn(hidden_states, hidden_states, hidden_states, attn_mask=causal_mask[0, 0, :, :])
+        
         return (hidden_states[0], None, None)
