@@ -144,21 +144,7 @@ class OPTAttentionLayerBetterTransformer(BetterTransformerBaseLayer):
         if len(attention_mask.shape) == 4:
             attention_mask = attention_mask.squeeze(1)[:, 0]
 
-        merged_mask, mask_type = self.merge_masks(causal_mask, attention_mask.bool(), query)
-
-        hidden_states = torch._native_multi_head_attention(
-            query,
-            key,
-            value,
-            self.embed_dim,
-            self.num_heads,
-            self.in_proj_weight,
-            self.in_proj_bias,
-            self.out_proj.weight,
-            self.out_proj.bias,
-            merged_mask,
-            False,
-            False,
-            mask_type,
-        )
+        # merged_mask, mask_type = self.merge_masks(causal_mask, attention_mask.bool(), query)
+        hidden_states = torch.nn.MultiheadAttention(self.embed_dim, self.num_heads, batch_first=True,  dtype=query.dtype)
+        
         return (hidden_states[0], None, None)
