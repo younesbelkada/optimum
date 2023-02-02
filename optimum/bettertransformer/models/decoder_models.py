@@ -16,7 +16,6 @@ from typing import TYPE_CHECKING
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 from .base import BetterTransformerBaseLayer
 
@@ -55,6 +54,21 @@ def _none_or_dtype(input):
     elif isinstance(input, torch.Tensor):
         return input.dtype
     raise RuntimeError("input to _none_or_dtype() must be None or torch.Tensor")
+
+
+def wrapped_scaled_dot_product(query, key, value, attention_mask=None, head_mask=None):
+    return torch.nn.functional.scaled_dot_product_attention(query, key, value, None, 0.0, True), None
+
+
+class GPT2AttentionLayerBetterTransformer(BetterTransformerBaseLayer):
+    def __init__(self, gpt_layer, config):
+        super().__init__(config, gpt_layer)
+
+        self.gpt_layer = gpt_layer
+        self.gpt_layer._attn = wrapped_scaled_dot_product
+
+    def forward(self, *args, **kwargs):
+        return self.gpt_layer(*args, **kwargs)
 
 
 class OPTAttentionLayerBetterTransformer(BetterTransformerBaseLayer):
@@ -97,8 +111,11 @@ class OPTAttentionLayerBetterTransformer(BetterTransformerBaseLayer):
 
         self.multihead_attn = torch.nn.MultiheadAttention(self.embed_dim, self.num_heads, dtype=self.q_proj.weight.dtype, add_bias_kv=True, batch_first=True)
         self.multihead_attn.out_proj = self.out_proj
-        self.multihead_attn.in_proj_weight = self.in_proj_weight
-        self.multihead_attn.in_proj_bias = self.in_proj_bias
+        self.q_proj = opt_layer.q_proj
+        self.k_proj = opt_layer.k_proj
+        self.v_proj = opt_layer.v_proj
+        # self.multihead_attn.in_proj_weight = self.in_proj_weight
+        # self.multihead_attn.in_proj_bias = self.in_proj_bias
 
 
     def merge_masks(self, attn_mask, key_padding_mask, query):
@@ -143,11 +160,12 @@ class OPTAttentionLayerBetterTransformer(BetterTransformerBaseLayer):
         return merged_mask, mask_type
 
     def forward(self, hidden_states, attention_mask, **__):
+        query, key, value = self.q_proj(hidden_states), self.k_proj(hidden_states), self.v_proj(hidden_states)
         # convert `attention_mask` which is a causal mask to a simple mask
         causal_mask = attention_mask.clone()
         if len(attention_mask.shape) == 4:
             attention_mask = attention_mask.squeeze(1)[:, 0]
 
-        hidden_states, attn_output_weights = self.multihead_attn(hidden_states, hidden_states, hidden_states, attn_mask=causal_mask[0, 0, :, :])
+        hidden_states, attn_output_weights = self.multihead_attn(query, key, value, attn_mask=causal_mask[0, 0, :, :])
         
         return (hidden_states[0], None, None)

@@ -13,7 +13,7 @@
 # limitations under the License.
 import warnings
 
-from .decoder_models import OPTAttentionLayerBetterTransformer
+from .decoder_models import OPTAttentionLayerBetterTransformer, GPT2AttentionLayerBetterTransformer
 from .encoder_models import (
     AlbertLayerBetterTransformer,
     BartEncoderLayerBetterTransformer,
@@ -49,6 +49,7 @@ class BetterTransformerManager:
         "markuplm": ("MarkupLMLayer", BertLayerBetterTransformer),
         "mbart": ("MBartEncoderLayer", MBartEncoderLayerBetterTransformer),
         "opt": ("OPTAttention", OPTAttentionLayerBetterTransformer),
+        "gpt2": ("GPT2Attention", GPT2AttentionLayerBetterTransformer),
         "rembert": ("RemBertLayer", BertLayerBetterTransformer),
         "roberta": ("RobertaLayer", BertLayerBetterTransformer),
         "roc_bert": ("RoCBertLayer", BertLayerBetterTransformer),
