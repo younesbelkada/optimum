@@ -23,39 +23,6 @@ from .base import BetterTransformerBaseLayer
 if TYPE_CHECKING:
     from transformers import PretrainedConfig
 
-
-def _canonical_mask(
-    mask,
-    mask_name,
-    other_type,
-    other_name,
-    target_type,
-    check_other,
-):
-    if mask is not None:
-        _mask_dtype = mask.dtype
-        _mask_is_float = torch.is_floating_point(mask)
-        if _mask_dtype != torch.bool and not _mask_is_float:
-            raise AssertionError(f"only bool and floating types of {mask_name} are supported")
-        if check_other and other_type is not None:
-            if _mask_dtype != other_type:
-                warnings.warn(
-                    f"Support for mismatched {mask_name} and {other_name} "
-                    "is deprecated. Use same type for both instead."
-                )
-        if not _mask_is_float:
-            mask = torch.zeros_like(mask, dtype=target_type).masked_fill_(mask, float("-inf"))
-    return mask
-
-
-def _none_or_dtype(input):
-    if input is None:
-        return None
-    elif isinstance(input, torch.Tensor):
-        return input.dtype
-    raise RuntimeError("input to _none_or_dtype() must be None or torch.Tensor")
-
-
 def wrapped_scaled_dot_product(query, key, value, attention_mask=None, head_mask=None):
     return torch.nn.functional.scaled_dot_product_attention(query, key, value, None, 0.0, True), None
 
