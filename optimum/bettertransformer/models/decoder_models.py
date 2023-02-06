@@ -82,90 +82,44 @@ class OPTAttentionLayerBetterTransformer(BetterTransformerBaseLayer):
         """
         super().__init__(config, opt_layer)
 
-        self.embed_dim = config.hidden_size
-        self.num_heads = config.num_attention_heads
+        self.embed_dim = opt_layer.embed_dim
+        self.num_heads = opt_layer.num_heads
+        self.dropout = opt_layer.dropout
+        self.head_dim = self.embed_dim // self.num_heads
+
+        if (self.head_dim * self.num_heads) != self.embed_dim:
+            raise ValueError(
+                f"embed_dim must be divisible by num_heads (got `embed_dim`: {self.embed_dim}"
+                f" and `num_heads`: {self.num_heads})."
+            )
+        self.scaling = self.head_dim**-0.5
+        self.is_decoder = opt_layer.is_decoder
 
         self.k_proj = opt_layer.k_proj
         self.v_proj = opt_layer.v_proj
         self.q_proj = opt_layer.q_proj
-
-        self.in_proj_weight = nn.Parameter(
-            torch.cat(
-                [
-                    opt_layer.q_proj.weight,
-                    opt_layer.k_proj.weight,
-                    opt_layer.v_proj.weight,
-                ]
-            )
-        )
-        self.in_proj_bias = nn.Parameter(
-            torch.cat(
-                [
-                    opt_layer.q_proj.bias,
-                    opt_layer.k_proj.bias,
-                    opt_layer.v_proj.bias,
-                ]
-            )
-        )
         self.out_proj = opt_layer.out_proj
 
-        self.multihead_attn = torch.nn.MultiheadAttention(self.embed_dim, self.num_heads, dtype=self.q_proj.weight.dtype, add_bias_kv=True, batch_first=True)
-        self.multihead_attn.out_proj = self.out_proj
-        self.q_proj = opt_layer.q_proj
-        self.k_proj = opt_layer.k_proj
-        self.v_proj = opt_layer.v_proj
-        # self.multihead_attn.in_proj_weight = self.in_proj_weight
-        # self.multihead_attn.in_proj_bias = self.in_proj_bias
+    def _shape(self, tensor: torch.Tensor, seq_len: int, bsz: int):
+        return tensor.view(bsz, seq_len, self.num_heads, self.head_dim).transpose(1, 2).contiguous()
 
+    def forward(
+        self,
+        hidden_states,
+        key_value_states = None,
+        past_key_value = None,
+        attention_mask = None,
+        layer_head_mask = None,
+        output_attentions = False,
+    ):
+        """Input shape: Batch x Time x Channel"""
+        # get query proj
+        query_states = self.q_proj(hidden_states) * self.scaling
+        value_states = self.v_proj(hidden_states)
+        key_states = self.k_proj(hidden_states)
 
-    def merge_masks(self, attn_mask, key_padding_mask, query):
-        r"""
-        Determine mask type and combine masks if necessary. If only one mask is provided, that mask
-        and the corresponding mask type will be returned. If both masks are provided, they will be both
-        expanded to shape ``(batch_size, num_heads, seq_len, seq_len)``, combined with logical ``or``
-        and mask type 2 will be returned
-        Args:
-            attn_mask: attention mask of shape ``(seq_len, seq_len)``, mask type 0
-            key_padding_mask: padding mask of shape ``(batch_size, seq_len)``, mask type 1
-            query: query embeddings of shape ``(batch_size, seq_len, embed_dim)``
-        Returns:
-            merged_mask: merged mask
-            mask_type: merged mask type (0, 1, or 2)
-        """
+        attn_output = torch.nn.functional.scaled_dot_product_attention(query_states, key_states, value_states, None, 0.0, True)
 
-        attn_mask = _canonical_mask(
-            mask=attn_mask,
-            mask_name="attn_mask",
-            other_type=_none_or_dtype(key_padding_mask),
-            other_name="key_padding_mask",
-            target_type=query.dtype,
-            check_other=False,
-        )
+        attn_output = self.out_proj(attn_output)
 
-        if attn_mask is not None:
-            mask_type = 0
-            merged_mask = attn_mask
-        if key_padding_mask is not None:
-            mask_type = 1
-            merged_mask = key_padding_mask
-        if (attn_mask is not None) and (key_padding_mask is not None):
-            # In this branch query can't be a nested tensor, so it has a shape
-            batch_size, seq_len, _ = query.shape
-            mask_type = 2
-            key_padding_mask_expanded = key_padding_mask.view(batch_size, 1, 1, seq_len).expand(
-                -1, self.num_heads, -1, -1
-            )
-            attn_mask_expanded = attn_mask.view(1, 1, seq_len, seq_len).expand(batch_size, self.num_heads, -1, -1)
-            merged_mask = attn_mask_expanded + key_padding_mask_expanded
-        return merged_mask, mask_type
-
-    def forward(self, hidden_states, attention_mask, **__):
-        query, key, value = self.q_proj(hidden_states), self.k_proj(hidden_states), self.v_proj(hidden_states)
-        # convert `attention_mask` which is a causal mask to a simple mask
-        causal_mask = attention_mask.clone()
-        if len(attention_mask.shape) == 4:
-            attention_mask = attention_mask.squeeze(1)[:, 0]
-
-        hidden_states, attn_output_weights = self.multihead_attn(query, key, value, attn_mask=causal_mask[0, 0, :, :])
-        
-        return (hidden_states[0], None, None)
+        return attn_output, None, past_key_value
